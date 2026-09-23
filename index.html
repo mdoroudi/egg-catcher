@@ -60,6 +60,11 @@
     height: 32px;
   }
   .hud .spacer { flex: 1; }
+  .hud span, .hud .sound { white-space: nowrap; }
+  @media (max-width: 480px) {
+    .hud { gap: 0.6em; font-size: 11px; }
+    .hud .sound { padding: 0.15em 0.4em; }
+  }
   .hud b { font-weight: 700; }
   .sound {
     font: inherit;
@@ -159,8 +164,10 @@
     <span>Level <b id="level">1</b></span>
     <span>Best <b id="best">0</b></span>
     <span class="spacer"></span>
-    <!-- TEMPORARY: skip button for previewing scenes. Delete this line and the skipBtn code to remove. -->
-    <button class="sound" id="skipBtn" type="button">Skip level</button>
+    <!-- Test buttons: hidden unless test mode is on (open the game with ?dev=1; ?dev=0 turns it off). -->
+    <button class="sound" id="skipBtn" type="button" hidden>Skip level</button>
+    <button class="sound" id="powerBtn" type="button" hidden>Power up</button>
+    <button class="sound" id="pauseBtn" type="button" hidden>Pause</button>
     <button class="sound" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
   </div>
   <div class="stage" id="stage">
@@ -170,6 +177,7 @@
     <div class="overlay" id="titleScreen">
       <h1>Egg Scramble</h1>
       <p>Hazel the hen is laying eggs up on the fence. Catch them in your egg baskets for points. Miss one and it cracks, and you lose a basket! Every level, a new chicken joins her.</p>
+      <p>Clear a level without missing a single egg to power up ⭐ Your basket turns gold and grows bigger, and the next miss costs your power-up instead of a basket.</p>
       <p>Drag your finger, move the mouse, use the arrow keys, or use a game controller (press A to start).</p>
       <button class="play" id="playBtn" type="button">Play</button>
     </div>
@@ -201,7 +209,7 @@
   const stage = $('stage'), cabinet = $('cabinet');
   const scoreEl = $('score'), levelEl = $('level'), bestEl = $('best');
   const titleScreen = $('titleScreen'), overScreen = $('overScreen'), pauseScreen = $('pauseScreen');
-  const banner = $('banner'), soundBtn = $('soundBtn');
+  const banner = $('banner'), soundBtn = $('soundBtn'), pauseBtn = $('pauseBtn');
 
   // Fit the game to the screen, keeping its shape
   function fit() {
@@ -271,6 +279,12 @@
 
   // ---------- Game constants ----------
   const BW = 32, BH = 7;               // basket size
+  const POWER_SCALE = 1.5;             // powered-up baskets are 50% wider
+  const RETRY_DELAY = 0.8;             // extra breather before eggs start again after a miss
+  const BASKET_COLORS = {
+    normal:  { handle: '#9C6128', top: '#C98A42', mid: '#B7742F', low: '#A0652A', rim: '#E8B06A', weave: '#7A4A1C' },
+    powered: { handle: '#D9A520', top: '#FFF8E6', mid: '#F4E6BE', low: '#E3C77A', rim: '#FFFFFF', weave: '#C9971C' }   // white and gold
+  };
   const BASKET_TOP = 150, BASKET_GAP = 17;
   const GROUND = 206;                  // where eggs crack
   const FENCE_Y = 44;                  // hens' fence rail
@@ -310,6 +324,9 @@
   let state = 'title';   // title | playing | levelBreak | missed | over | paused
   let resumeState = 'playing';
   let score = 0, best = loadBest(), level = 1, baskets = 3, streak = 0;
+  let powered = false;     // earned by clearing a level without a single miss
+  let perfect = true;      // no misses yet on the current level (across retries)
+  const basketW = () => powered ? Math.round(BW * POWER_SCALE) : BW;
   let px = W / 2, targetX = W / 2;
   let eggs = [], splats = [], hens = [], caughtColors = [];
   let timer = 0, clock = 0, celebrateT = 0, introT = 0, zoomBreed = null;
@@ -356,7 +373,7 @@
     showBanner.t = setTimeout(() => { banner.hidden = true; }, secs * 1000);
   }
 
-  function setupHens() {
+  function setupHens(extraDelay = 0) {
     const s = levelSettings(level);
     hens = [];
     for (let i = 0; i < s.hens; i++) {
@@ -367,14 +384,14 @@
         t: Math.random(),
         toss: 0,
         toDrop: EGGS_PER_HEN,
-        dropTimer: 0.9 + i * (s.interval / s.hens)   // stagger so they don't lay at once
+        dropTimer: 0.9 + extraDelay + i * (s.interval / s.hens)   // stagger so they don't lay at once
       });
     }
   }
 
-  function startLevel(announce) {
+  function startLevel(announce, isRetry = false) {
     paintBackground(level - 1);
-    setupHens();
+    setupHens(isRetry ? RETRY_DELAY : 0);
     eggs = [];
     state = 'intro';
     introT = 0;
@@ -386,23 +403,39 @@
   function newGame() {
     ensureAudio();
     score = 0; level = 1; baskets = 3; streak = 0;
+    powered = false; perfect = true;
     splats = []; caughtColors = [];
     titleScreen.hidden = true;
     overScreen.hidden = true;
     pauseScreen.hidden = true;
+    pauseBtn.hidden = false;
+    pauseBtn.textContent = 'Pause';
     tone(523, 0.08, 'square', 0.05); tone(659, 0.08, 'square', 0.05, 0, 0.09); tone(784, 0.12, 'square', 0.05, 0, 0.18);
     startLevel('Level 1');
   }
 
+  // One miss per attempt: the first cracked egg clears the field and restarts the level,
+  // so a burst of eggs can never cost more than one basket (or one power-up).
   function missEgg(a) {
+    if (state !== 'playing') return;
     splats.push({ x: a.x, t: 1, egg: a.egg });
     eggs = [];
     for (const h of hens) h.toDrop = 0;
-    baskets--;
+    perfect = false;
     streak = 0;
     caughtColors = [];
-    tone(1400, 0.06, 'sawtooth', 0.07, -900); tone(220, 0.35, 'triangle', 0.1, -120, 0.05);
     if (navigator.vibrate) { try { navigator.vibrate(120); } catch (e) {} }
+    if (powered) {
+      // The power-up takes the hit instead of a basket
+      powered = false;
+      showBanner('Power-up lost!', 1.3);
+      tone(880, 0.08, 'square', 0.06, -500); tone(440, 0.2, 'triangle', 0.08, -200, 0.08);
+      state = 'missed';
+      timer = 1.4;
+      return;
+    }
+    baskets--;
+    tone(1400, 0.06, 'sawtooth', 0.07, -900); tone(220, 0.35, 'triangle', 0.1, -120, 0.05);
     if (baskets <= 0) {
       state = 'over';
       timer = 1.2;
@@ -414,6 +447,7 @@
 
   function endGame() {
     state = 'title-over';
+    pauseBtn.hidden = true;
     $('finalScore').textContent = 'Score ' + score;
     $('finalBest').textContent = score >= best && score > 0 ? 'New best score!' : 'Best ' + best;
     overScreen.hidden = false;
@@ -427,7 +461,7 @@
     // Player movement (keys nudge the target; finger/mouse sets it directly)
     if (keys.left) targetX -= 190 * dt;
     if (keys.right) targetX += 190 * dt;
-    targetX = Math.max(BW / 2, Math.min(W - BW / 2, targetX));
+    targetX = Math.max(basketW() / 2, Math.min(W - basketW() / 2, targetX));
     if (state === 'playing' || state === 'intro' || state === 'levelBreak' || state === 'missed') {
       px += (targetX - px) * Math.min(1, dt * 22);
     }
@@ -470,7 +504,7 @@
         const bottom = a.y + 4;
         for (let i = 0; i < baskets; i++) {
           const by = BASKET_TOP + i * BASKET_GAP;
-          if (prevBottom <= by + 2 && bottom >= by && Math.abs(a.x - px) <= BW / 2 + 2) {
+          if (prevBottom <= by + 2 && bottom >= by && Math.abs(a.x - px) <= basketW() / 2 + 2) {
             a.caught = true;
             break;
           }
@@ -500,7 +534,14 @@
         zoomBreed = hens[hens.length - 1].breed;
         let msg = 'Level cleared!';
         if (level % 3 === 0 && baskets < 3) { baskets++; msg = 'Bonus basket!'; }
-        showBanner(msg, 1.4);
+        if (perfect && !powered) {
+          powered = true;
+          msg = msg === 'Bonus basket!' ? 'Perfect! Power-up + bonus basket!' : 'Perfect level! Power-up!';
+          tone(784, 0.08, 'square', 0.05, 0, 0.3); tone(1047, 0.08, 'square', 0.05, 0, 0.38); tone(1319, 0.2, 'square', 0.05, 0, 0.46);
+        } else if (perfect) {
+          msg = msg === 'Bonus basket!' ? 'Perfect! Bonus basket!' : 'Perfect level!';
+        }
+        showBanner(msg, 1.6);
         tone(659, 0.09, 'square', 0.05); tone(784, 0.09, 'square', 0.05, 0, 0.1); tone(1047, 0.18, 'square', 0.05, 0, 0.2);
       }
     } else if (state === 'intro') {
@@ -513,12 +554,13 @@
       if (Math.random() < dt * 3) cluck();
       if (timer <= 0) {
         level++;
+        perfect = true;
         const newHen = level <= BREEDS.length ? BREEDS[level - 1] : null;
         startLevel(newHen ? 'Level ' + level + ': ' + newHen.name + ' joins!' : 'Level ' + level + ': faster!');
       }
     } else if (state === 'missed') {
       timer -= dt;
-      if (timer <= 0) startLevel();   // same level, same chickens, fresh eggs
+      if (timer <= 0) startLevel(undefined, true);   // same level, same chickens, fresh eggs
     } else if (state === 'over') {
       timer -= dt;
       if (timer <= 0) endGame();
@@ -852,16 +894,41 @@
     rect(x + 3, y + 4, 1, 1, E.speck);
   }
 
+  // Small pixel star on the top basket's handle while powered up
+  const STAR = ['...#...', '..###..', '#######', '.#####.', '..###..', '.##.##.', '.#...#.'];
+  function drawStar(cx, cy) {
+    const x = cx - 3, y = cy - 3;
+    const on = (r, c) => r >= 0 && r < STAR.length && STAR[r][c] === '#';
+    // Dark outline so it reads against sky and grass
+    STAR.forEach((row, r) => {
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] !== '#') continue;
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          if (!on(r + dr, c + dc)) rect(x + c + dc, y + r + dr, 1, 1, '#7A5200');
+        }
+      }
+    });
+    STAR.forEach((row, r) => {
+      for (let c = 0; c < row.length; c++) if (row[c] === '#') rect(x + c, y + r, 1, 1, '#FFD23F');
+    });
+    // Twinkle: the centre pixel pulses white
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(clock * 6);
+    rect(x + 3, y + 3, 1, 1, '#FFFFFF');
+    ctx.globalAlpha = 1;
+  }
+
   function drawBaskets() {
-    const x = Math.round(px - BW / 2);
+    const bw = basketW();
+    const C = powered ? BASKET_COLORS.powered : BASKET_COLORS.normal;
+    const x = Math.round(px - bw / 2);
     for (let i = 0; i < baskets; i++) {
       const y = BASKET_TOP + i * BASKET_GAP;
       // Handle arch
-      rect(x + 5, y - 5, 2, 5, '#9C6128');
-      rect(x + BW - 7, y - 5, 2, 5, '#9C6128');
-      rect(x + 7, y - 7, BW - 14, 2, '#9C6128');
-      rect(x + 6, y - 6, 1, 1, '#9C6128');
-      rect(x + BW - 7, y - 6, 1, 1, '#9C6128');
+      rect(x + 5, y - 5, 2, 5, C.handle);
+      rect(x + bw - 7, y - 5, 2, 5, C.handle);
+      rect(x + 7, y - 7, bw - 14, 2, C.handle);
+      rect(x + 6, y - 6, 1, 1, C.handle);
+      rect(x + bw - 7, y - 6, 1, 1, C.handle);
       // Recently caught eggs peeking out of the top basket
       if (i === 0) {
         caughtColors.forEach((E, k) => {
@@ -871,15 +938,16 @@
         });
       }
       // Woven wicker body
-      rect(x, y, BW, 3, '#C98A42');
-      rect(x + 1, y + 3, BW - 2, 3, '#B7742F');
-      rect(x + 3, y + 6, BW - 6, 2, '#A0652A');
-      rect(x, y, BW, 1, '#E8B06A');
-      for (let k = 1; k < BW - 1; k += 3) {
-        rect(x + k, y + 1 + (k % 2), 1, 1, '#7A4A1C');
-        rect(x + k + 1, y + 4 - (k % 2), 1, 1, '#7A4A1C');
+      rect(x, y, bw, 3, C.top);
+      rect(x + 1, y + 3, bw - 2, 3, C.mid);
+      rect(x + 3, y + 6, bw - 6, 2, C.low);
+      rect(x, y, bw, 1, C.rim);
+      for (let k = 1; k < bw - 1; k += 3) {
+        rect(x + k, y + 1 + (k % 2), 1, 1, C.weave);
+        rect(x + k + 1, y + 4 - (k % 2), 1, 1, C.weave);
       }
     }
+    if (powered && baskets > 0) drawStar(x + Math.floor(bw / 2), BASKET_TOP - 7);   // centred on the top handle
   }
 
   function drawGround() {
@@ -1012,18 +1080,37 @@
     if (state === 'paused') {
       state = resumeState;
       pauseScreen.hidden = true;
+      pauseBtn.textContent = 'Pause';
       ensureAudio();
     } else if (state === 'playing' || state === 'intro' || state === 'levelBreak' || state === 'missed') {
       resumeState = state;
       state = 'paused';
       pauseScreen.hidden = false;
+      pauseBtn.textContent = 'Resume';
+      $('resumeBtn').focus({ preventScroll: true });
     }
   }
+  pauseBtn.addEventListener('click', togglePause);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state !== 'paused') togglePause();
   });
 
-  // TEMPORARY: skip to the celebration and the next level's scene
+  // ---------- Test mode ----------
+  // Open the game with ?dev=1 to show the test buttons; this browser remembers it until ?dev=0.
+  const DEV_KEY = 'eggScrambleDev';
+  let devMode = false;
+  try {
+    const dev = new URLSearchParams(location.search).get('dev');
+    if (dev === '1') localStorage.setItem(DEV_KEY, '1');
+    if (dev === '0') localStorage.removeItem(DEV_KEY);
+    devMode = localStorage.getItem(DEV_KEY) === '1';
+  } catch (e) {
+    devMode = new URLSearchParams(location.search).get('dev') === '1';
+  }
+  $('skipBtn').hidden = !devMode;
+  $('powerBtn').hidden = !devMode;
+
+  // Test mode: skip to the celebration and the next level's scene
   $('skipBtn').addEventListener('click', () => {
     ensureAudio();
     if (state === 'title' || state === 'title-over') newGame();
@@ -1036,6 +1123,15 @@
     for (const h of hens) h.homeX = h.x;
     zoomBreed = hens[hens.length - 1].breed;
     banner.hidden = true;
+  });
+
+  // Test mode: turn the power-up on instantly (starts a game first if needed)
+  $('powerBtn').addEventListener('click', () => {
+    ensureAudio();
+    if (state === 'title' || state === 'title-over') newGame();
+    powered = true;
+    showBanner('Power-up!', 1.2);
+    tone(784, 0.08, 'square', 0.05); tone(1047, 0.08, 'square', 0.05, 0, 0.08); tone(1319, 0.2, 'square', 0.05, 0, 0.16);
   });
 
   $('playBtn').addEventListener('click', newGame);
