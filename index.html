@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Egg Scramble</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #E9E4F5;
+    --ink: #221E4D;
+    --hud-ink: #221E4D;
+    --cream: #FFF4E0;
+    --gold: #FFD66B;
+    --orange: #F08A4B;
+    --orange-dark: #9C4A1E;
+    --plum: #B5527A;
+    --shade: rgba(22, 20, 58, 0.78);
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #16143A; --ink: #EDE9FF; --hud-ink: #EDE9FF; }
+  }
+  :root[data-theme="dark"] { --bg: #16143A; --ink: #EDE9FF; --hud-ink: #EDE9FF; }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Silkscreen", "Courier New", Courier, monospace;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cabinet {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+  }
+  .hud {
+    width: var(--w, 100%);
+    display: flex;
+    align-items: center;
+    gap: 1.2em;
+    color: var(--hud-ink);
+    font-size: clamp(12px, 2.4vmin, 20px);
+    height: 32px;
+  }
+  .hud .spacer { flex: 1; }
+  .hud b { font-weight: 700; }
+  .sound {
+    font: inherit;
+    font-size: inherit;
+    background: none;
+    border: 2px solid currentColor;
+    color: inherit;
+    border-radius: 4px;
+    padding: 0.15em 0.6em;
+    cursor: pointer;
+  }
+  .sound:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+  .stage {
+    position: relative;
+    width: var(--w, 256px);
+    height: var(--h, 224px);
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border-radius: 6px;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9em;
+    padding: 1em;
+    background: var(--shade);
+    color: var(--cream);
+    text-align: center;
+    border-radius: 6px;
+  }
+  .overlay[hidden] { display: none; }
+  h1 {
+    margin: 0;
+    font-weight: 700;
+    font-size: clamp(26px, 8vmin, 72px);
+    line-height: 1;
+    color: var(--gold);
+    text-shadow: 0.08em 0.08em 0 var(--plum);
+  }
+  h2 {
+    margin: 0;
+    font-weight: 700;
+    font-size: clamp(22px, 6vmin, 52px);
+    color: var(--gold);
+    text-shadow: 0.08em 0.08em 0 var(--plum);
+  }
+  .overlay p {
+    margin: 0;
+    max-width: 26em;
+    font-size: clamp(11px, 2.2vmin, 18px);
+    line-height: 1.6;
+  }
+  .big-score { font-size: clamp(18px, 4.5vmin, 36px) !important; }
+  .play {
+    font: inherit;
+    font-weight: 700;
+    font-size: clamp(16px, 3.6vmin, 30px);
+    padding: 0.6em 1.4em;
+    border: 0;
+    border-radius: 6px;
+    background: var(--orange);
+    color: #221E4D;
+    cursor: pointer;
+    box-shadow: 0 5px 0 var(--orange-dark);
+  }
+  .play:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--orange-dark); }
+  .play:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
+  .banner {
+    position: absolute;
+    left: 0; right: 0; top: 42%;
+    text-align: center;
+    font-weight: 700;
+    font-size: clamp(16px, 4.6vmin, 40px);
+    color: var(--gold);
+    text-shadow: 0.08em 0.08em 0 var(--plum);
+    padding: 0 0.6em;
+    line-height: 1.25;
+    pointer-events: none;
+  }
+  .banner[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="cabinet" id="cabinet">
+  <div class="hud" aria-live="polite">
+    <span>Score <b id="score">0</b></span>
+    <span>Level <b id="level">1</b></span>
+    <span>Best <b id="best">0</b></span>
+    <span class="spacer"></span>
+    <!-- TEMPORARY: skip button for previewing scenes. Delete this line and the skipBtn code to remove. -->
+    <button class="sound" id="skipBtn" type="button">Skip level</button>
+    <button class="sound" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+  </div>
+  <div class="stage" id="stage">
+    <canvas id="game" aria-label="Egg Scramble game area"></canvas>
+    <div class="banner" id="banner" hidden></div>
+
+    <div class="overlay" id="titleScreen">
+      <h1>Egg Scramble</h1>
+      <p>Hazel the hen is laying eggs up on the fence. Catch them in your egg baskets for points. Miss one and it cracks, and you lose a basket! Every level, a new chicken joins her.</p>
+      <p>Drag your finger, move the mouse, use the arrow keys, or use a game controller (press A to start).</p>
+      <button class="play" id="playBtn" type="button">Play</button>
+    </div>
+
+    <div class="overlay" id="overScreen" hidden>
+      <h2>Game over</h2>
+      <p class="big-score" id="finalScore">Score 0</p>
+      <p id="finalBest"></p>
+      <button class="play" id="againBtn" type="button">Play again</button>
+    </div>
+
+    <div class="overlay" id="pauseScreen" hidden>
+      <h2>Paused</h2>
+      <button class="play" id="resumeBtn" type="button">Keep playing</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Setup ----------
+  const W = 256, H = 224;
+  const canvas = document.getElementById('game');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), cabinet = $('cabinet');
+  const scoreEl = $('score'), levelEl = $('level'), bestEl = $('best');
+  const titleScreen = $('titleScreen'), overScreen = $('overScreen'), pauseScreen = $('pauseScreen');
+  const banner = $('banner'), soundBtn = $('soundBtn');
+
+  // Fit the game to the screen, keeping its shape
+  function fit() {
+    const availW = cabinet.clientWidth - 16;
+    const availH = cabinet.clientHeight - 16 - 40;
+    const s = Math.max(0.5, Math.min(availW / W, availH / H));
+    const w = Math.floor(W * s), h = Math.floor(H * s);
+    document.documentElement.style.setProperty('--w', w + 'px');
+    document.documentElement.style.setProperty('--h', h + 'px');
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', () => setTimeout(fit, 200));
+  fit();
+
+  // ---------- Saved best score ----------
+  const BEST_KEY = 'eggScrambleBest';
+  function loadBest() { try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; } }
+  function saveBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) {} }
+
+  // ---------- Sound ----------
+  let audio = null, soundOn = true;
+  function ensureAudio() {
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
+    if (audio && audio.state === 'suspended') audio.resume();
+  }
+  function tone(freq, dur, type = 'square', vol = 0.06, slide = 0, delay = 0) {
+    if (!audio || !soundOn) return;
+    const t = audio.currentTime + delay;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audio.destination);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+  function buk(f0, f1, dur, delay = 0, vol = 0.12) {
+    if (!audio || !soundOn) return;
+    const t = audio.currentTime + delay;
+    const o = audio.createOscillator(), bp = audio.createBiquadFilter(), g = audio.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    bp.type = 'bandpass'; bp.frequency.setValueAtTime(1300, t); bp.Q.value = 2.5;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(bp).connect(g).connect(audio.destination);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+  // Short cluck for each egg; full "buk buk bagawk" at the start of a wave
+  function cluck() { buk(520, 330, 0.07); }
+  function bagawk() {
+    buk(520, 330, 0.07, 0);
+    buk(540, 340, 0.07, 0.14);
+    buk(420, 760, 0.09, 0.32, 0.14);
+    buk(760, 380, 0.22, 0.41, 0.14);
+  }
+
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundBtn.textContent = soundOn ? 'Sound on' : 'Sound off';
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    ensureAudio();
+  });
+
+  // ---------- Game constants ----------
+  const BW = 32, BH = 7;               // basket size
+  const BASKET_TOP = 150, BASKET_GAP = 17;
+  const GROUND = 206;                  // where eggs crack
+  const FENCE_Y = 44;                  // hens' fence rail
+  const SKY = ['#3E9BE6', '#4FA7EA', '#62B3EE', '#76BFF1', '#8BCBF4', '#A2D7F7', '#BAE2F9'];
+  const CLOUDS = [{ x: 20, y: 12, s: 1 }, { x: 120, y: 26, s: 0.8 }, { x: 190, y: 6, s: 1.1 }];
+
+  // Egg colors
+  const BROWN = { base: '#C98A55', shade: '#A86E3E', shine: '#E3B384', speck: '#B87A47', line: '#6E4424' };
+  const WHITE = { base: '#FAF7F0', shade: '#D8D2C4', shine: '#FFFFFF', speck: '#EDE8DC', line: '#8C8474' };
+  const CHOC  = { base: '#7A4426', shade: '#5E321A', shine: '#9E6440', speck: '#4E2814', line: '#2E170A' };   // dark chocolate Marans eggs
+  const BLUE  = { base: '#A6D8DB', shade: '#7FB6BB', shine: '#D2F0F1', speck: '#93C7CB', line: '#46767B' };
+
+  // One new chicken joins the fence each level
+  const BREEDS = [
+    { key: 'isa',     name: 'Hazel the ISA Brown', egg: BROWN },
+    { key: 'leghorn', name: 'a White Leghorn',     egg: WHITE },
+    { key: 'marans',  name: 'a Cuckoo Marans',     egg: CHOC },
+    { key: 'polish',  name: 'a Blue Polish',       egg: WHITE },
+    { key: 'ameraucana', name: 'a Black Ameraucana', egg: BLUE }
+  ];
+  const EGGS_PER_HEN = 10;
+
+  function levelSettings(l) {
+    const hens = Math.min(BREEDS.length, l);
+    // Total eggs per second grows gently (about +35% per level), shared across all hens,
+    // so adding a chicken makes it busier without suddenly doubling the pace.
+    const eggsPerSecond = 0.79 * (1 + 0.35 * (l - 1));
+    return {
+      hens,
+      fall: 51 + (l - 1) * 5,            // eggs fall a little faster each level
+      interval: hens / eggsPerSecond,    // time between eggs, per hen
+      speed: 48 + (l - 1) * 5            // how fast hens scurry
+    };
+  }
+
+  // ---------- Game state ----------
+  let state = 'title';   // title | playing | levelBreak | missed | over | paused
+  let resumeState = 'playing';
+  let score = 0, best = loadBest(), level = 1, baskets = 3, streak = 0;
+  let px = W / 2, targetX = W / 2;
+  let eggs = [], splats = [], hens = [], caughtColors = [];
+  let timer = 0, clock = 0, celebrateT = 0, introT = 0, zoomBreed = null;
+  const DANCE_TIME = 2.2, ZOOM_TIME = 1.0, CELEBRATE_TIME = DANCE_TIME + ZOOM_TIME;
+  const INTRO_TIME = 1.8, PASS_TIME = 0.45;
+
+  // Happy dance: each hen hops up and down and shuffles along the fence
+  function dancePos(i, h) {
+    const t = celebrateT;
+    const homeX = h.homeX != null ? h.homeX : h.x;
+    const hop = Math.abs(Math.sin(t * 7 + i * 1.3));
+    const shuffle = Math.sin(t * 2.2 + i * 1.7) * 14;
+    const x = Math.max(16, Math.min(W - 16, homeX + shuffle));
+    return {
+      x,
+      y: FENCE_Y + 4 - hop * 10,
+      dir: Math.cos(t * 2.2 + i * 1.7) >= 0 ? 1 : -1,
+      airborne: hop > 0.25
+    };
+  }
+
+  // Draw one hen scaled up around a point (for the zoom-to-camera transition)
+  function drawHenScaled(breed, cx, cy, scale, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(Math.round(cx), Math.round(cy));
+    ctx.scale(scale, scale);
+    drawHen({ breed, x: 0, y: 6, dir: 1, toss: 0, flapWing: Math.floor(clock * 10) % 2 === 0 });
+    ctx.restore();
+  }
+  const keys = { left: false, right: false };
+
+  function updateHud() {
+    scoreEl.textContent = score;
+    levelEl.textContent = level;
+    bestEl.textContent = best;
+  }
+  updateHud();
+
+  function showBanner(text, secs) {
+    banner.textContent = text;
+    banner.hidden = false;
+    clearTimeout(showBanner.t);
+    showBanner.t = setTimeout(() => { banner.hidden = true; }, secs * 1000);
+  }
+
+  function setupHens() {
+    const s = levelSettings(level);
+    hens = [];
+    for (let i = 0; i < s.hens; i++) {
+      hens.push({
+        breed: BREEDS[i],
+        x: ((i + 0.5) / s.hens) * (W - 30) + 15,
+        dir: i % 2 ? -1 : 1,
+        t: Math.random(),
+        toss: 0,
+        toDrop: EGGS_PER_HEN,
+        dropTimer: 0.9 + i * (s.interval / s.hens)   // stagger so they don't lay at once
+      });
+    }
+  }
+
+  function startLevel(announce) {
+    paintBackground(level - 1);
+    setupHens();
+    eggs = [];
+    state = 'intro';
+    introT = 0;
+    showBanner(announce || 'Level ' + level, INTRO_TIME);
+    bagawk();
+    updateHud();
+  }
+
+  function newGame() {
+    ensureAudio();
+    score = 0; level = 1; baskets = 3; streak = 0;
+    splats = []; caughtColors = [];
+    titleScreen.hidden = true;
+    overScreen.hidden = true;
+    pauseScreen.hidden = true;
+    tone(523, 0.08, 'square', 0.05); tone(659, 0.08, 'square', 0.05, 0, 0.09); tone(784, 0.12, 'square', 0.05, 0, 0.18);
+    startLevel('Level 1');
+  }
+
+  function missEgg(a) {
+    splats.push({ x: a.x, t: 1, egg: a.egg });
+    eggs = [];
+    for (const h of hens) h.toDrop = 0;
+    baskets--;
+    streak = 0;
+    caughtColors = [];
+    tone(1400, 0.06, 'sawtooth', 0.07, -900); tone(220, 0.35, 'triangle', 0.1, -120, 0.05);
+    if (navigator.vibrate) { try { navigator.vibrate(120); } catch (e) {} }
+    if (baskets <= 0) {
+      state = 'over';
+      timer = 1.2;
+    } else {
+      state = 'missed';
+      timer = 1.4;
+    }
+  }
+
+  function endGame() {
+    state = 'title-over';
+    $('finalScore').textContent = 'Score ' + score;
+    $('finalBest').textContent = score >= best && score > 0 ? 'New best score!' : 'Best ' + best;
+    overScreen.hidden = false;
+    $('againBtn').focus({ preventScroll: true });
+  }
+
+  // ---------- Update ----------
+  function update(dt) {
+    clock += dt;
+
+    // Player movement (keys nudge the target; finger/mouse sets it directly)
+    if (keys.left) targetX -= 190 * dt;
+    if (keys.right) targetX += 190 * dt;
+    targetX = Math.max(BW / 2, Math.min(W - BW / 2, targetX));
+    if (state === 'playing' || state === 'intro' || state === 'levelBreak' || state === 'missed') {
+      px += (targetX - px) * Math.min(1, dt * 22);
+    }
+
+    for (const s of splats) s.t -= dt * 0.8;
+    splats = splats.filter(s => s.t > 0);
+    for (const h of hens) if (h.toss > 0) h.toss -= dt;
+
+    if (state === 'playing') {
+      const s = levelSettings(level);
+
+      for (const h of hens) {
+        // Scurry back and forth, changing direction at random
+        h.t -= dt;
+        if (h.t <= 0) {
+          h.dir = Math.random() < 0.5 ? -1 : 1;
+          h.t = 0.3 + Math.random() * 1.2;
+        }
+        h.x += h.dir * s.speed * dt;
+        if (h.x < 16) { h.x = 16; h.dir = 1; }
+        if (h.x > W - 16) { h.x = W - 16; h.dir = -1; }
+
+        // Lay eggs
+        if (h.toDrop > 0) {
+          h.dropTimer -= dt;
+          if (h.dropTimer <= 0) {
+            eggs.push({ x: h.x, y: FENCE_Y + 4, egg: h.breed.egg });
+            h.toDrop--;
+            h.dropTimer = s.interval * (0.8 + Math.random() * 0.4);
+            h.toss = 0.15;
+            cluck();
+          }
+        }
+      }
+
+      // Move eggs, check catches and misses
+      for (const a of eggs) {
+        const prevBottom = a.y + 4;
+        a.y += s.fall * dt;
+        const bottom = a.y + 4;
+        for (let i = 0; i < baskets; i++) {
+          const by = BASKET_TOP + i * BASKET_GAP;
+          if (prevBottom <= by + 2 && bottom >= by && Math.abs(a.x - px) <= BW / 2 + 2) {
+            a.caught = true;
+            break;
+          }
+        }
+        if (a.caught) {
+          score += level;
+          streak++;
+          caughtColors.push(a.egg);
+          if (caughtColors.length > 4) caughtColors.shift();
+          tone(440 + Math.min(streak, 24) * 28, 0.06, 'square', 0.05);
+          if (score > best) { best = score; saveBest(best); }
+        } else if (a.y > GROUND) {
+          missEgg(a);
+          updateHud();
+          return;
+        }
+      }
+      eggs = eggs.filter(a => !a.caught);
+      updateHud();
+
+      // Level cleared
+      if (eggs.length === 0 && hens.every(h => h.toDrop === 0)) {
+        state = 'levelBreak';
+        timer = CELEBRATE_TIME;
+        celebrateT = 0;
+        for (const h of hens) h.homeX = h.x;
+        zoomBreed = hens[hens.length - 1].breed;
+        let msg = 'Level cleared!';
+        if (level % 3 === 0 && baskets < 3) { baskets++; msg = 'Bonus basket!'; }
+        showBanner(msg, 1.4);
+        tone(659, 0.09, 'square', 0.05); tone(784, 0.09, 'square', 0.05, 0, 0.1); tone(1047, 0.18, 'square', 0.05, 0, 0.2);
+      }
+    } else if (state === 'intro') {
+      // Text is on screen: hens wait, no eggs yet. Play starts when it clears.
+      introT += dt;
+      if (introT >= INTRO_TIME) { state = 'playing'; banner.hidden = true; }
+    } else if (state === 'levelBreak') {
+      timer -= dt;
+      celebrateT += dt;
+      if (Math.random() < dt * 3) cluck();
+      if (timer <= 0) {
+        level++;
+        const newHen = level <= BREEDS.length ? BREEDS[level - 1] : null;
+        startLevel(newHen ? 'Level ' + level + ': ' + newHen.name + ' joins!' : 'Level ' + level + ': faster!');
+      }
+    } else if (state === 'missed') {
+      timer -= dt;
+      if (timer <= 0) startLevel();   // same level, same chickens, fresh eggs
+    } else if (state === 'over') {
+      timer -= dt;
+      if (timer <= 0) endGame();
+    }
+  }
+
+  // ---------- Drawing ----------
+  function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(Math.round(x), Math.round(y), w, h); }
+
+  // ---------- Sunny farm background (drawn once, then reused) ----------
+  const bg = document.createElement('canvas');
+  bg.width = W; bg.height = H;
+  const bctx = bg.getContext('2d');
+  function brect(x, y, w, h, c) { bctx.fillStyle = c; bctx.fillRect(Math.round(x), Math.round(y), w, h); }
+
+  function roundTree(x, base, size, crown = '#2F8A3E', hl = '#46A854', top = '#6CC46A') {
+    const r = size;
+    brect(x - 1, base - r - 2, 3, r + 2, '#7A4A24');           // trunk
+    brect(x, base - r - 2, 1, r + 2, '#94603A');
+    // Crown: stacked rows make a round pixel canopy
+    for (let dy = -r; dy <= r; dy++) {
+      const w = Math.round(Math.sqrt(r * r - dy * dy) * 2);
+      brect(x - w / 2, base - r * 2 - 2 + dy, w, 1, crown);
+    }
+    for (let dy = -r + 2; dy <= 0; dy++) {
+      const w = Math.round(Math.sqrt((r - 2) * (r - 2) - dy * dy) * 1.2);
+      brect(x - w / 2 - 2, base - r * 2 - 3 + dy, w, 1, hl);
+    }
+    brect(x - r / 2, base - r * 2 - 4, 2, 2, top);
+  }
+
+  function pineTree(x, base, height) {
+    brect(x - 1, base - 4, 3, 4, '#6B3F1F');
+    for (let i = 0; i < height; i++) {
+      const w = Math.max(1, Math.round((i / height) * 16));
+      brect(x - w / 2, base - 4 - height + i, w, 1, i % 4 === 0 ? '#2B7A3A' : '#23693A');
+    }
+  }
+
+  function bush(x, y, w) {
+    for (let dx = 0; dx < w; dx++) {
+      const hgt = 5 + Math.round(Math.sin((dx / w) * Math.PI) * 5 + Math.sin(dx * 1.7) * 1.2);
+      brect(x + dx, y - hgt, 1, hgt, '#3A9243');
+      if (dx % 3 === 1) brect(x + dx, y - hgt, 1, 1, '#5CB45A');
+    }
+    brect(x + Math.round(w * 0.3), y - 6, 1, 1, '#E23B3B');     // a few berries
+    brect(x + Math.round(w * 0.65), y - 8, 1, 1, '#E23B3B');
+  }
+
+  // Small flower helpers
+  function poppy(x, y) { brect(x - 1, y, 3, 2, '#F58A1F'); brect(x, y - 1, 1, 1, '#F58A1F'); brect(x, y, 1, 1, '#FFD23F'); brect(x, y + 2, 1, 2, '#4E8A3A'); }
+  function lupine(x, y, h) { brect(x, y + h, 1, 2, '#4E8A3A'); for (let i = 0; i < h; i++) brect(x - (i % 2), y + i, 1 + (i % 2), 1, i < 2 ? '#9EA2F0' : '#6B6FD6'); }
+  function lavenderClump(x, y, w) {
+    for (let dx = 0; dx < w; dx++) {
+      const h = 3 + ((dx * 7) % 3);
+      brect(x + dx, y - h, 1, h, dx % 2 ? '#8E6BC4' : '#A98BD8');
+      brect(x + dx, y, 1, 1, '#5E8F4A');
+    }
+  }
+  function cornflower(x, y) { brect(x - 1, y, 3, 1, '#3F6FE0'); brect(x, y - 1, 1, 3, '#3F6FE0'); brect(x, y, 1, 1, '#1E3F9E'); brect(x, y + 2, 1, 2, '#4E8A3A'); }
+  function sunflower(x, y) {
+    brect(x, y + 3, 1, 8, '#4E8A3A'); brect(x + 1, y + 6, 2, 1, '#5DA24A');
+    brect(x - 2, y - 1, 5, 5, '#FFD23F'); brect(x - 1, y - 2, 3, 7, '#FFD23F'); brect(x - 3, y, 7, 3, '#FFD23F');
+    brect(x - 1, y, 3, 3, '#7A4A1C');
+  }
+  function barn(x, base) {
+    brect(x, base - 16, 26, 16, '#B83A2E');
+    brect(x - 2, base - 18, 30, 3, '#6E2A22');
+    brect(x + 2, base - 22, 22, 4, '#6E2A22');
+    brect(x + 6, base - 25, 14, 3, '#6E2A22');
+    brect(x + 9, base - 10, 8, 10, '#F3E6CF');
+    brect(x + 10, base - 9, 6, 9, '#8A2E24');
+    brect(x + 10, base - 9, 6, 1, '#F3E6CF'); brect(x + 12, base - 9, 1, 9, '#F3E6CF');
+    brect(x + 11, base - 15, 4, 3, '#F3E6CF');
+  }
+
+  const SCENES = [
+    { // 1: sunny meadow
+      hills: ['#9FD08A', '#86C471'],
+      meadow: ['#7DC065', '#74BA5C', '#6BB354', '#63AC4D', '#5BA547'],
+      decor() {
+        for (let i = 0; i < 40; i++) {
+          const fx = (i * 67 + 11) % W, fy = 122 + ((i * 37) % 80);
+          brect(fx, fy, 1, 1, i % 3 === 0 ? '#FFFFFF' : i % 3 === 1 ? '#FFD84A' : '#F28AB2');
+        }
+        pineTree(18, 118, 20); roundTree(46, 124, 9); roundTree(92, 118, 7); pineTree(128, 116, 16);
+        roundTree(170, 126, 10); pineTree(205, 118, 22); roundTree(238, 122, 8);
+      }
+    },
+    { // 2: California wildflowers: golden hills, oaks, poppies and lupine
+      hills: ['#E6C878', '#D6B25A'],
+      meadow: ['#B8C56B', '#AABD60', '#9DB458', '#90AB50', '#84A24A'],
+      decor() {
+        roundTree(40, 120, 10, '#4F7A34'); roundTree(150, 118, 8, '#4F7A34'); roundTree(226, 124, 11, '#4F7A34');
+        for (let i = 0; i < 70; i++) {
+          const fx = (i * 53 + 7) % W, fy = 124 + ((i * 29) % 74);
+          if (i % 4 === 0) lupine(fx, fy - 3, 4); else poppy(fx, fy);
+        }
+      }
+    },
+    { // 3: purple flower farm: lavender rows and a red barn
+      hills: ['#A8D493', '#8FC77C'],
+      meadow: ['#7FB86A', '#78B262', '#70AB5B', '#69A555', '#629E4F'],
+      decor() {
+        barn(16, 118);
+        roundTree(168, 120, 7); pineTree(210, 116, 18); roundTree(240, 122, 8);
+        // One row of lavender on the same line as the barn, running off to its right
+        for (let x = 46; x < 152; x += 10) lavenderClump(x, 118, 8);
+        // Open meadow with a few little white flowers
+        for (let i = 0; i < 18; i++) brect((i * 67 + 11) % W, 132 + ((i * 37) % 68), 1, 1, '#FFFFFF');
+      }
+    },
+    { // 4: blue and yellow flowers: cornflowers, buttercups and sunflowers
+      hills: ['#9DD08F', '#82C278'],
+      meadow: ['#7CC266', '#73BB5E', '#6AB456', '#62AD4F', '#5AA648'],
+      decor() {
+        pineTree(24, 118, 18); roundTree(118, 120, 8); roundTree(200, 122, 9);
+        for (let i = 0; i < 60; i++) {
+          const fx = (i * 71 + 5) % W, fy = 124 + ((i * 31) % 74);
+          if (i % 2) cornflower(fx, fy); else { brect(fx, fy, 2, 2, '#FFD23F'); brect(fx, fy + 2, 1, 2, '#4E8A3A'); }
+        }
+        for (const x of [60, 96, 160, 236]) sunflower(x, 176 + (x % 7));
+      }
+    },
+    { // 5: fall colors: golden hills, a few autumn trees, fallen leaves and pumpkins
+      hills: ['#D9A860', '#C98F4A'],
+      meadow: ['#A9A55E', '#9E9C56', '#93924F', '#888948', '#7D8042'],
+      decor() {
+        roundTree(36, 122, 10, '#D2602A', '#EE8A3C', '#F6B25A');
+        roundTree(108, 118, 8, '#DDA82A', '#F0C84E', '#F8E08A');
+        pineTree(150, 116, 18);
+        roundTree(200, 124, 11, '#B33A28', '#D25A36', '#EE8A5A');
+        // Fallen leaves
+        const LEAVES = ['#E0782E', '#C8452C', '#E8B43A', '#A8552A'];
+        for (let i = 0; i < 70; i++) brect((i * 61 + 9) % W, 124 + ((i * 43) % 78), 2, 1, LEAVES[i % 4]);
+        // A couple of pumpkins
+        for (const [x, y] of [[80, 196], [238, 190]]) {
+          brect(x - 4, y - 5, 9, 5, '#E8791E'); brect(x - 3, y - 6, 7, 7, '#E8791E');
+          brect(x - 1, y - 6, 1, 7, '#C45E14'); brect(x + 2, y - 6, 1, 7, '#C45E14');
+          brect(x, y - 8, 1, 2, '#4E6A2A');
+        }
+      }
+    }
+  ];
+
+  function paintBackground(sceneIndex = 0) {
+    const sc = SCENES[sceneIndex % SCENES.length];
+    bctx.clearRect(0, 0, W, H);
+    // Sky bands
+    const band = 14;
+    SKY.forEach((c, i) => brect(0, i * band, W, band, c));
+    brect(0, SKY.length * band, W, 40, SKY[SKY.length - 1]);
+    // Far hills
+    for (let x = 0; x < W; x++) {
+      const h1 = 14 + Math.round(Math.sin(x / 26) * 6 + Math.sin(x / 11) * 2);
+      brect(x, 104 - h1, 1, h1 + 4, sc.hills[0]);
+      const h2 = 10 + Math.round(Math.sin(x / 19 + 2) * 5);
+      brect(x, 112 - h2, 1, h2 + 4, sc.hills[1]);
+    }
+    // Meadow, lighter far away and richer up close
+    sc.meadow.forEach((c, i) => brect(0, 112 + i * 19, W, 19, c));
+    sc.decor();
+    // Bushes along the bottom
+    bush(4, GROUND, 22);
+    bush(58, GROUND, 16);
+    bush(110, GROUND, 26);
+    bush(170, GROUND, 18);
+    bush(222, GROUND, 28);
+  }
+  paintBackground(0);
+
+  function drawCloud(x, y, sc) {
+    const c = '#FFFFFF', sh = '#E3F1FB';
+    const w = Math.round(30 * sc);
+    rect(x, y + 5, w, 5, c);
+    rect(x + 4, y + 2, Math.round(10 * sc), 5, c);
+    rect(x + Math.round(12 * sc), y, Math.round(12 * sc), 6, c);
+    rect(x + 2, y + 9, w - 4, 1, sh);
+  }
+
+  function drawSky() {
+    ctx.drawImage(bg, 0, 0);
+    // Sun with gently pulsing rays
+    const sx = 222, sy = 12;
+    const ray = Math.floor(clock * 2) % 2 ? 3 : 2;
+    rect(sx - 1, sy - 12 - ray, 2, ray + 1, '#FFE066');
+    rect(sx - 1, sy + 11, 2, ray + 1, '#FFE066');
+    rect(sx - 12 - ray, sy - 1, ray + 1, 2, '#FFE066');
+    rect(sx + 11, sy - 1, ray + 1, 2, '#FFE066');
+    for (let dy = -9; dy <= 9; dy++) {
+      const w = Math.round(Math.sqrt(81 - dy * dy) * 2);
+      rect(sx - w / 2, sy + dy, w, 1, dy < -3 ? '#FFF3A8' : '#FFD84A');
+    }
+    // Drifting clouds
+    for (const c of CLOUDS) {
+      const x = ((c.x + clock * 4 * c.s) % (W + 40)) - 40;
+      drawCloud(x, c.y, c.s);
+    }
+  }
+
+  function drawFence() {
+    for (let x = 4; x < W; x += 20) {
+      rect(x, FENCE_Y + 2, 6, 22, '#9A6A3A');
+      rect(x + 1, FENCE_Y, 4, 2, '#9A6A3A');
+      rect(x, FENCE_Y + 2, 1, 22, '#C99A5B');
+    }
+    rect(0, FENCE_Y + 4, W, 4, '#C99A5B');
+    rect(0, FENCE_Y + 8, W, 1, '#7A4A24');
+    rect(0, FENCE_Y + 16, W, 3, '#B8884E');
+  }
+
+  // Colors for each breed
+  const LOOKS = {
+    isa:     { body: '#9C4A22', dark: '#6E3016', light: '#C0703A', neck: '#D4914E', head: '#9C4A22', tail: '#9C4A22', tailTip: '#F3E6CF', beak: '#F2B01E', legs: '#F2B01E' },
+    leghorn: { body: '#FFFFFF', dark: '#DCDCE6', light: '#FFFFFF', neck: '#FFFFFF', head: '#FFFFFF', tail: '#FFFFFF', tailTip: '#EDEDF3', beak: '#F2B01E', legs: '#F2B01E' },
+    marans:  { body: '#4A4A53', dark: '#36363E', light: '#A7A7B2', neck: '#4A4A53', head: '#4A4A53', tail: '#3E3E46', tailTip: '#A7A7B2', beak: '#D9C9A8', legs: '#E6D6C4' },
+    polish:  { body: '#5F7699', dark: '#46597A', light: '#7F95B8', neck: '#5F7699', head: '#5F7699', tail: '#46597A', tailTip: '#7F95B8', beak: '#9AA3B2', legs: '#6B7280' },
+    ameraucana: { body: '#202027', dark: '#0F0F14', light: '#3C4766', neck: '#202027', head: '#202027', tail: '#15151B', tailTip: '#35406A', beak: '#4A4A52', legs: '#3E4450' }
+  };
+
+  function drawHen(h) {
+    const L = LOOKS[h.breed.key];
+    const x = Math.round(h.x), y = Math.round(h.y != null ? h.y : FENCE_Y + 4);
+    const flap = h.flying ? (Math.floor(clock * 14) % 2 === 0) : !!h.flapWing;
+    const face = h.dir;
+    const squash = h.toss > 0 ? 2 : 0;
+    const bob = state === 'playing' && !h.flying ? Math.round(Math.sin(clock * 16 + x) * 0.6) : 0;
+    const by = y - 12 + bob + squash;
+    const m = (dx, dy, w, hh, c) => rect(face > 0 ? x + dx : x - dx - w, by + dy, w, hh, c);
+    const RED = '#D62828';
+
+    // Tail
+    if (h.breed.key === 'leghorn') {           // tall, upright white tail
+      m(-12, -6, 3, 8, L.tail);
+      m(-14, -10, 3, 7, L.tail);
+      m(-15, -12, 2, 4, L.tailTip);
+    } else {
+      m(-12, -4, 3, 6, L.tail);
+      m(-14, -6, 3, 5, L.tail);
+      m(-15, -8, 2, 3, L.tailTip);
+      m(-13, -6, 1, 2, L.tailTip);
+    }
+    // Body
+    m(-9, 0, 16, 11 - squash, L.body);
+    m(-10, 2, 18, 7 - squash, L.body);
+    m(-7, -1, 12, 1, L.body);
+    // Cuckoo Marans: soft, broken gray bars (fuzzier than a Barred Rock's crisp stripes)
+    if (h.breed.key === 'marans') {
+      for (let r = 1; r < 10 - squash; r += 3) {
+        for (let c = -10; c < 8; c += 4) m(c + (r % 2) * 2, r, 3, 1, L.light);
+      }
+      m(-14, -5, 2, 1, L.light);
+      m(-12, -1, 2, 1, L.light);
+    }
+    // Wing (flaps up and down while flying)
+    if ((h.flying || h.flapWing) && flap) {
+      m(-6, -6, 9, 7, L.dark);
+      m(-8, -9, 7, 4, L.dark);
+      m(-5, -6, 7, 1, L.light);
+    } else if (h.flying) {
+      m(-6, 4, 9, 6, L.dark);
+      m(-7, 8, 6, 3, L.dark);
+      m(-5, 4, 7, 1, L.light);
+    } else {
+      m(-6, 3, 9, 5 - squash, L.dark);
+      m(-5, 3, 7, 1, L.light);
+    }
+    // Neck and head
+    m(3, -4, 6, 6, L.neck);
+    m(4, -8, 6, 5, L.head);
+    if (h.breed.key === 'marans') { m(3, -2, 2, 1, L.light); m(6, -2, 2, 1, L.light); m(5, -6, 3, 1, L.light); }
+
+    if (h.breed.key === 'polish') {
+      // Big white pom-pom crest covering the top of the head
+      m(2, -14, 10, 7, '#FFFFFF');
+      m(1, -12, 12, 4, '#FFFFFF');
+      m(4, -15, 6, 1, '#FFFFFF');
+      m(3, -9, 1, 1, '#E6E6EE');
+      m(9, -13, 1, 1, '#E6E6EE');
+      m(10, -6, 1, 1, '#1A1A1A');                // eye peeking out
+      m(11, -6, 2, 1, L.beak);
+      m(11, -5, 1, 1, '#7F8796');
+    } else {
+      // Single red comb (bigger and floppier on the Leghorn)
+      if (h.breed.key === 'leghorn') {
+        m(3, -12, 1, 4, RED); m(4, -13, 1, 5, RED); m(5, -12, 1, 4, RED);
+        m(6, -13, 1, 5, RED); m(7, -12, 1, 4, RED); m(8, -13, 1, 5, RED); m(9, -11, 2, 2, RED);
+      } else if (h.breed.key === 'ameraucana') {
+        m(5, -10, 4, 2, RED); m(6, -11, 2, 1, RED);   // small pea comb
+      } else {
+        m(4, -11, 1, 3, RED); m(5, -12, 1, 4, RED); m(6, -11, 1, 3, RED);
+        m(7, -12, 1, 4, RED); m(8, -10, 1, 2, RED);
+      }
+      m(7, -6, 1, 1, h.breed.key === 'ameraucana' ? '#C07A3A' : '#1A1A1A');   // eye
+      m(10, -6, 2, 1, L.beak);                   // beak
+      m(10, -5, 1, 1, '#D99A12');
+      if (h.breed.key === 'ameraucana') {
+        m(7, -4, 4, 3, L.body);                  // fluffy beard
+        m(4, -5, 2, 3, L.body);                  // cheek muffs
+        m(5, -7, 3, 1, L.light);                 // green-blue sheen
+      } else {
+        m(8, -4, 2, 2, RED);                     // wattle
+      }
+      if (h.breed.key === 'leghorn') m(5, -5, 1, 1, '#FFFFFF');   // white earlobe
+    }
+    // Legs and toes (tucked up while flying)
+    if (h.flying) { m(-3, 11, 5, 1, L.legs); return; }
+    m(-3, 11 - squash, 1, 3, L.legs);
+    m(1, 11 - squash, 1, 3, L.legs);
+    m(-4, 13 - squash, 3, 1, L.legs);
+    m(0, 13 - squash, 3, 1, L.legs);
+    if (h.breed.key === 'marans') { m(-4, 11 - squash, 1, 2, L.dark); m(2, 11 - squash, 1, 2, L.dark); }
+  }
+
+  function drawEgg(x, y, E) {
+    x = Math.round(x) - 3; y = Math.round(y) - 4;
+    // Outline
+    rect(x + 1, y - 1, 4, 1, E.line);
+    rect(x, y, 1, 2, E.line); rect(x + 5, y, 1, 2, E.line);
+    rect(x - 1, y + 2, 1, 5, E.line); rect(x + 6, y + 2, 1, 5, E.line);
+    rect(x, y + 7, 1, 1, E.line); rect(x + 5, y + 7, 1, 1, E.line);
+    rect(x + 1, y + 8, 4, 1, E.line);
+    // Egg
+    rect(x + 2, y, 2, 1, E.base);
+    rect(x + 1, y + 1, 4, 1, E.base);
+    rect(x, y + 2, 6, 5, E.base);
+    rect(x + 1, y + 7, 4, 1, E.base);
+    rect(x + 4, y + 3, 2, 4, E.shade);
+    rect(x + 1, y + 7, 4, 1, E.shade);
+    rect(x + 1, y + 2, 1, 2, E.shine);
+    rect(x + 3, y + 4, 1, 1, E.speck);
+  }
+
+  function drawBaskets() {
+    const x = Math.round(px - BW / 2);
+    for (let i = 0; i < baskets; i++) {
+      const y = BASKET_TOP + i * BASKET_GAP;
+      // Handle arch
+      rect(x + 5, y - 5, 2, 5, '#9C6128');
+      rect(x + BW - 7, y - 5, 2, 5, '#9C6128');
+      rect(x + 7, y - 7, BW - 14, 2, '#9C6128');
+      rect(x + 6, y - 6, 1, 1, '#9C6128');
+      rect(x + BW - 7, y - 6, 1, 1, '#9C6128');
+      // Recently caught eggs peeking out of the top basket
+      if (i === 0) {
+        caughtColors.forEach((E, k) => {
+          const ex = x + 7 + k * 5;
+          rect(ex, y - 2, 4, 3, E.base);
+          rect(ex + 1, y - 3, 2, 1, E.base);
+        });
+      }
+      // Woven wicker body
+      rect(x, y, BW, 3, '#C98A42');
+      rect(x + 1, y + 3, BW - 2, 3, '#B7742F');
+      rect(x + 3, y + 6, BW - 6, 2, '#A0652A');
+      rect(x, y, BW, 1, '#E8B06A');
+      for (let k = 1; k < BW - 1; k += 3) {
+        rect(x + k, y + 1 + (k % 2), 1, 1, '#7A4A1C');
+        rect(x + k + 1, y + 4 - (k % 2), 1, 1, '#7A4A1C');
+      }
+    }
+  }
+
+  function drawGround() {
+    rect(0, GROUND, W, H - GROUND, '#3E8E3E');
+    rect(0, GROUND, W, 2, '#5DB05D');
+    for (let x = 3; x < W; x += 11) rect(x, GROUND - 2, 1, 2, '#5DB05D');
+    for (let x = 8; x < W; x += 17) rect(x, GROUND + 8, 2, 1, '#2E6E2E');
+  }
+
+  function drawSplats() {
+    for (const s of splats) {
+      const spread = Math.round((1 - s.t) * 8);
+      ctx.globalAlpha = Math.min(1, s.t * 1.5);
+      const x = Math.round(s.x);
+      rect(x - 6 - spread, GROUND - 2, 12 + spread * 2, 3, '#FFFDF6');
+      rect(x - 4 - spread / 2, GROUND - 3, 8 + spread, 1, '#FFFDF6');
+      rect(x - 2, GROUND - 4, 5, 4, '#FFC21A');
+      rect(x - 1, GROUND - 5, 3, 1, '#FFC21A');
+      rect(x - 1, GROUND - 4, 1, 1, '#FFE27A');
+      rect(x - 9 - spread, GROUND - 5, 3, 2, s.egg.base);
+      rect(x - 8 - spread, GROUND - 6, 1, 1, s.egg.shade);
+      rect(x + 7 + spread, GROUND - 4, 3, 2, s.egg.base);
+      rect(x + 9 + spread, GROUND - 5, 1, 1, s.egg.shade);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function draw() {
+    drawSky();
+    drawFence();
+    if (state === 'title' && hens.length === 0) {
+      drawHen({ breed: BREEDS[0], x: W / 2, dir: 1, toss: 0 });
+    }
+    if (state === 'levelBreak') {
+      const zooming = celebrateT > DANCE_TIME;
+      hens.forEach((h, i) => {
+        if (zooming && h.breed === zoomBreed) return;
+        const p = dancePos(i, h);
+        drawHen({ breed: h.breed, x: p.x, y: p.y, dir: p.dir, toss: 0, flapWing: p.airborne });
+      });
+    } else {
+      for (const h of hens) drawHen(h);
+    }
+    for (const a of eggs) drawEgg(a.x, a.y, a.egg);
+    drawGround();
+    drawSplats();
+    if (state !== 'title') drawBaskets();
+
+    // Transition: one hen runs right up to the camera and covers the field...
+    if (state === 'levelBreak' && celebrateT > DANCE_TIME && zoomBreed) {
+      const i = hens.findIndex(h => h.breed === zoomBreed);
+      const start = dancePos(i, hens[i]);
+      const k = Math.min(1, (celebrateT - DANCE_TIME) / ZOOM_TIME);
+      const e = k * k * k;
+      drawHenScaled(zoomBreed, start.x + (W / 2 - start.x) * e, start.y + (H / 2 - start.y) * e, 1 + e * 28, 1);
+    }
+    // ...then passes the camera, revealing the new scene
+    if (state === 'intro' && introT < PASS_TIME && zoomBreed) {
+      const k = introT / PASS_TIME;
+      drawHenScaled(zoomBreed, W / 2, H / 2, 29 + k * 14, 1 - k);
+    }
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    pollGamepad(dt);
+    if (state !== 'paused') update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- Controls ----------
+  function pointerToGame(e) {
+    const r = stage.getBoundingClientRect();
+    targetX = ((e.clientX - r.left) / r.width) * W;
+  }
+  stage.addEventListener('pointerdown', e => { ensureAudio(); pointerToGame(e); });
+  stage.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse' || e.buttons || e.pressure > 0) pointerToGame(e);
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') { keys.left = true; e.preventDefault(); }
+    if (e.key === 'ArrowRight' || e.key === 'd') { keys.right = true; e.preventDefault(); }
+    if ((e.key === ' ' || e.key === 'Enter') && (state === 'title' || state === 'title-over')) {
+      if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
+      e.preventDefault(); newGame();
+    }
+    if ((e.key === 'p' || e.key === 'Escape') && state !== 'title' && state !== 'title-over') togglePause();
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+  });
+
+  // ---------- Game controller (Xbox etc.) ----------
+  // Left stick or D-pad moves the baskets. A starts / plays again / resumes. Menu button pauses.
+  const padPrev = {};
+  function pollGamepad(dt) {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const gp of pads) {
+      if (!gp) continue;
+      const pressed = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+      let move = 0;
+      const ax = gp.axes[0] || 0;
+      if (Math.abs(ax) > 0.2) move = ax;
+      if (pressed(14)) move = -1;
+      if (pressed(15)) move = 1;
+      if (move) targetX += move * 230 * dt;
+
+      const a = pressed(0), menu = pressed(9);
+      const wasA = padPrev[gp.index + 'a'], wasMenu = padPrev[gp.index + 'm'];
+      if (a && !wasA) {
+        ensureAudio();
+        if (state === 'title' || state === 'title-over') newGame();
+        else if (state === 'paused') togglePause();
+      }
+      if (menu && !wasMenu && state !== 'title' && state !== 'title-over') togglePause();
+      padPrev[gp.index + 'a'] = a;
+      padPrev[gp.index + 'm'] = menu;
+    }
+  }
+  window.addEventListener('gamepadconnected', () => showBanner('Controller connected!', 1.5));
+
+  function togglePause() {
+    if (state === 'paused') {
+      state = resumeState;
+      pauseScreen.hidden = true;
+      ensureAudio();
+    } else if (state === 'playing' || state === 'intro' || state === 'levelBreak' || state === 'missed') {
+      resumeState = state;
+      state = 'paused';
+      pauseScreen.hidden = false;
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state !== 'paused') togglePause();
+  });
+
+  // TEMPORARY: skip to the celebration and the next level's scene
+  $('skipBtn').addEventListener('click', () => {
+    ensureAudio();
+    if (state === 'title' || state === 'title-over') newGame();
+    if (state !== 'playing' && state !== 'intro') return;
+    eggs = [];
+    for (const h of hens) h.toDrop = 0;
+    state = 'levelBreak';
+    timer = CELEBRATE_TIME;
+    celebrateT = 0;
+    for (const h of hens) h.homeX = h.x;
+    zoomBreed = hens[hens.length - 1].breed;
+    banner.hidden = true;
+  });
+
+  $('playBtn').addEventListener('click', newGame);
+  $('againBtn').addEventListener('click', newGame);
+  $('resumeBtn').addEventListener('click', togglePause);
+})();
+</script>
+</body>
+</html>
