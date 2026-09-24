@@ -185,7 +185,7 @@
     <button class="sound" id="skipBtn" type="button" hidden>Skip level</button>
     <button class="sound" id="powerBtn" type="button" hidden>Power up</button>
     <button class="sound icon-btn" id="pauseBtn" type="button" aria-label="Pause" hidden></button>
-    <button class="sound" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    <button class="sound icon-btn" id="soundBtn" type="button" aria-pressed="true" aria-label="Sound on"></button>
   </div>
   <div class="stage" id="stage">
     <canvas id="game" aria-label="Egg Scramble game area"></canvas>
@@ -236,6 +236,16 @@
     pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
   }
   setPauseIcon(false);
+
+  // Sound button: speaker with waves when on, speaker with an X when off
+  const SOUND_ON_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 6h3l4-4v12l-4-4H1z" fill="currentColor"/><path d="M10.5 5.5a3.5 3.5 0 010 5M12.5 3.5a6.3 6.3 0 010 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>';
+  const SOUND_OFF_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 6h3l4-4v12l-4-4H1z" fill="currentColor"/><path d="M10.5 5.5l4 5M14.5 5.5l-4 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  function setSoundIcon(on) {
+    soundBtn.innerHTML = on ? SOUND_ON_ICON : SOUND_OFF_ICON;
+    soundBtn.setAttribute('aria-label', on ? 'Sound on' : 'Sound off');
+    soundBtn.setAttribute('aria-pressed', String(on));
+  }
+  setSoundIcon(true);
 
   // Fit the game to the screen, keeping its shape
   function fit() {
@@ -298,8 +308,7 @@
 
   soundBtn.addEventListener('click', () => {
     soundOn = !soundOn;
-    soundBtn.textContent = soundOn ? 'Sound on' : 'Sound off';
-    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    setSoundIcon(soundOn);
     ensureAudio();
   });
 
