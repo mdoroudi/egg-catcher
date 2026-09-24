@@ -91,6 +91,8 @@
     padding: 0.15em 0.6em;
     cursor: pointer;
   }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 2.4em; height: 1.8em; padding: 0; }
+  .icon-btn svg { width: 1.15em; height: 1.15em; display: block; }
   .sound:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
   .stage {
     position: relative;
@@ -182,7 +184,7 @@
     <!-- Test buttons: hidden unless test mode is on (open the game with ?dev=1; ?dev=0 turns it off). -->
     <button class="sound" id="skipBtn" type="button" hidden>Skip level</button>
     <button class="sound" id="powerBtn" type="button" hidden>Power up</button>
-    <button class="sound" id="pauseBtn" type="button" hidden>Pause</button>
+    <button class="sound icon-btn" id="pauseBtn" type="button" aria-label="Pause" hidden></button>
     <button class="sound" id="soundBtn" type="button" aria-pressed="true">Sound on</button>
   </div>
   <div class="stage" id="stage">
@@ -225,6 +227,15 @@
   const scoreEl = $('score'), levelEl = $('level'), bestEl = $('best');
   const titleScreen = $('titleScreen'), overScreen = $('overScreen'), pauseScreen = $('pauseScreen');
   const banner = $('banner'), soundBtn = $('soundBtn'), pauseBtn = $('pauseBtn');
+
+  // Pause button shows symbols: two bars to pause, a triangle to resume
+  const PAUSE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="4" height="12" fill="currentColor"/><rect x="9" y="2" width="4" height="12" fill="currentColor"/></svg>';
+  const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2l10 6-10 6z" fill="currentColor"/></svg>';
+  function setPauseIcon(paused) {
+    pauseBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+    pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+  }
+  setPauseIcon(false);
 
   // Fit the game to the screen, keeping its shape
   function fit() {
@@ -424,7 +435,7 @@
     overScreen.hidden = true;
     pauseScreen.hidden = true;
     pauseBtn.hidden = false;
-    pauseBtn.textContent = 'Pause';
+    setPauseIcon(false);
     tone(523, 0.08, 'square', 0.05); tone(659, 0.08, 'square', 0.05, 0, 0.09); tone(784, 0.12, 'square', 0.05, 0, 0.18);
     startLevel('Level 1');
   }
@@ -1095,13 +1106,13 @@
     if (state === 'paused') {
       state = resumeState;
       pauseScreen.hidden = true;
-      pauseBtn.textContent = 'Pause';
+      setPauseIcon(false);
       ensureAudio();
     } else if (state === 'playing' || state === 'intro' || state === 'levelBreak' || state === 'missed') {
       resumeState = state;
       state = 'paused';
       pauseScreen.hidden = false;
-      pauseBtn.textContent = 'Resume';
+      setPauseIcon(true);
       $('resumeBtn').focus({ preventScroll: true });
     }
   }
