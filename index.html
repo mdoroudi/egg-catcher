@@ -191,7 +191,7 @@
     <span>Level <b id="level">1</b></span>
     <span>Best <b id="best">0</b></span>
     <span class="spacer"></span>
-    <!-- Test button: hidden unless test mode is on (open the game with ?dev=1; ?dev=0 turns it off). -->
+    <!-- Test button: only shown when the link has ?dev=1. -->
     <button class="sound" id="powerBtn" type="button" hidden>Power up</button>
     <button class="sound icon-btn" id="skipBtn" type="button" aria-label="Skip level" title="Skip level" hidden></button>
     <button class="sound icon-btn" id="pauseBtn" type="button" aria-label="Pause" hidden></button>
@@ -1366,17 +1366,10 @@
   });
 
   // ---------- Test mode ----------
-  // Open the game with ?dev=1 to show the test buttons; this browser remembers it until ?dev=0.
-  const DEV_KEY = 'eggScrambleDev';
-  let devMode = false;
-  try {
-    const dev = new URLSearchParams(location.search).get('dev');
-    if (dev === '1') localStorage.setItem(DEV_KEY, '1');
-    if (dev === '0') localStorage.removeItem(DEV_KEY);
-    devMode = localStorage.getItem(DEV_KEY) === '1';
-  } catch (e) {
-    devMode = new URLSearchParams(location.search).get('dev') === '1';
-  }
+  // Test buttons only show when the link itself has ?dev=1. Nothing is remembered, so players
+  // with a normal link never see them.
+  const devMode = new URLSearchParams(location.search).get('dev') === '1';
+  try { localStorage.removeItem('eggScrambleDev'); } catch (e) {}   // forget the old remembered setting
   $('powerBtn').hidden = !devMode;
 
   // Skip level (for everyone): straight to the next level, keeping score, baskets and power-up
