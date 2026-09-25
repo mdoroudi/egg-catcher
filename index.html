@@ -93,6 +93,7 @@
   }
   .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 2.4em; height: 1.8em; padding: 0; }
   .icon-btn svg { width: 1.15em; height: 1.15em; display: block; }
+  .icon-btn[hidden] { display: none; }
   .sound:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
   .stage {
     position: relative;
@@ -190,9 +191,9 @@
     <span>Level <b id="level">1</b></span>
     <span>Best <b id="best">0</b></span>
     <span class="spacer"></span>
-    <!-- Test buttons: hidden unless test mode is on (open the game with ?dev=1; ?dev=0 turns it off). -->
-    <button class="sound" id="skipBtn" type="button" hidden>Skip level</button>
+    <!-- Test button: hidden unless test mode is on (open the game with ?dev=1; ?dev=0 turns it off). -->
     <button class="sound" id="powerBtn" type="button" hidden>Power up</button>
+    <button class="sound icon-btn" id="skipBtn" type="button" aria-label="Skip level" title="Skip level" hidden></button>
     <button class="sound icon-btn" id="pauseBtn" type="button" aria-label="Pause" hidden></button>
     <button class="sound icon-btn" id="soundBtn" type="button" aria-pressed="true" aria-label="Sound on"></button>
   </div>
@@ -250,6 +251,8 @@
     pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
   }
   setPauseIcon(false);
+  // Skip button: fast-forward to a bar
+  $('skipBtn').innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 3l7 5-7 5zM7 3l7 5-7 5z" fill="currentColor"/><rect x="13" y="3" width="2" height="10" fill="currentColor"/></svg>';
 
   // Sound button: speaker with waves when on, speaker with an X when off
   const SOUND_ON_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1 6h3l4-4v12l-4-4H1z" fill="currentColor"/><path d="M10.5 5.5a3.5 3.5 0 010 5M12.5 3.5a6.3 6.3 0 010 9" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>';
@@ -559,6 +562,13 @@
     updateHud();
   }
 
+  function goToNextLevel() {
+    level++;
+    perfect = true;
+    const newHen = level <= BREEDS.length ? BREEDS[level - 1] : null;
+    startLevel(newHen ? 'Level ' + level + ': ' + newHen.name + ' joins!' : 'Level ' + level + ': faster!');
+  }
+
   function newGame() {
     ensureAudio();
     score = 0; level = 1; baskets = 3; streak = 0;
@@ -568,6 +578,7 @@
     overScreen.hidden = true;
     pauseScreen.hidden = true;
     pauseBtn.hidden = false;
+    $('skipBtn').hidden = false;
     setPauseIcon(false);
     tone(523, 0.08, 'square', 0.05); tone(659, 0.08, 'square', 0.05, 0, 0.09); tone(784, 0.12, 'square', 0.05, 0, 0.18);
     startLevel('Level 1');
@@ -607,6 +618,7 @@
   function endGame() {
     state = 'title-over';
     pauseBtn.hidden = true;
+    $('skipBtn').hidden = true;
     $('finalScore').textContent = 'Score ' + score;
     $('finalBest').textContent = score >= best && score > 0 ? 'New best score!' : 'Best ' + best;
     overScreen.hidden = false;
@@ -711,10 +723,7 @@
       celebrateT += dt;
       if (Math.random() < dt * 3) cluck();
       if (timer <= 0) {
-        level++;
-        perfect = true;
-        const newHen = level <= BREEDS.length ? BREEDS[level - 1] : null;
-        startLevel(newHen ? 'Level ' + level + ': ' + newHen.name + ' joins!' : 'Level ' + level + ': faster!');
+        goToNextLevel();
       }
     } else if (state === 'missed') {
       timer -= dt;
@@ -1368,22 +1377,23 @@
   } catch (e) {
     devMode = new URLSearchParams(location.search).get('dev') === '1';
   }
-  $('skipBtn').hidden = !devMode;
   $('powerBtn').hidden = !devMode;
 
-  // Test mode: skip to the celebration and the next level's scene
+  // Skip level (for everyone): straight to the next level, keeping score, baskets and power-up
+  // (no celebration, and no points for the skipped level). Works from the pause screen too.
   $('skipBtn').addEventListener('click', () => {
     ensureAudio();
-    if (state === 'title' || state === 'title-over') newGame();
-    if (state !== 'playing' && state !== 'intro') return;
+    $('skipBtn').blur();
+    if (state === 'paused') {
+      pauseScreen.hidden = true;
+      setPauseIcon(false);
+      state = resumeState;
+    }
+    if (!['playing', 'intro', 'missed', 'levelBreak'].includes(state)) return;
     eggs = [];
-    for (const h of hens) h.toDrop = 0;
-    state = 'levelBreak';
-    timer = CELEBRATE_TIME;
-    celebrateT = 0;
-    for (const h of hens) h.homeX = h.x;
-    zoomBreed = hens[hens.length - 1].breed;
+    zoomBreed = null;
     banner.hidden = true;
+    goToNextLevel();
   });
 
   // Test mode: turn the power-up on instantly (starts a game first if needed)
