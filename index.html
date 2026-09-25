@@ -347,6 +347,19 @@
   const pickEgg = b => Array.isArray(b.egg) ? b.egg[Math.floor(Math.random() * b.egg.length)] : b.egg;
   const EGGS_PER_HEN = 10;
 
+  // Kaboom-style sweeps (from level 6, when the fence gets crowded): about half the eggs come in
+  // lines. The hens bunch up at one side, march across together, and the front hen drops a steady
+  // row of eggs that you catch by sliding along. Sweeps take turns with the usual scramble.
+  const SWEEP = {
+    fromLevel: 6,
+    eggs: 6,          // eggs in each sweep
+    gap: 0.42,        // seconds between eggs in a sweep
+    speed: 70,        // how fast the line of hens marches (pixels per second)
+    spacing: 18,      // distance between hens in the line
+    gatherSpeed: 150, // how fast hens hurry into line
+    chunk: 6          // eggs of normal scramble between sweeps
+  };
+
   function levelSettings(l) {
     const hens = Math.min(BREEDS.length, l);
     // Total eggs per second grows gently (about +35% per level), shared across all hens,
@@ -369,6 +382,7 @@
   const basketW = () => powered ? Math.round(BW * POWER_SCALE) : BW;
   let px = W / 2, targetX = W / 2;
   let eggs = [], splats = [], hens = [], caughtColors = [];
+  let pattern = null;   // sweep / scramble rhythm for levels with sweeps
   let timer = 0, clock = 0, celebrateT = 0, introT = 0, zoomBreed = null;
   const DANCE_TIME = 2.2, ZOOM_TIME = 1.0, CELEBRATE_TIME = DANCE_TIME + ZOOM_TIME;
   const INTRO_TIME = 1.8, PASS_TIME = 0.45;
@@ -427,6 +441,67 @@
         dropTimer: 0.9 + extraDelay + i * (s.interval / s.hens)   // stagger so they don't lay at once
       });
     }
+    // Start with a sweep, then alternate; half the level's eggs come in sweeps
+    pattern = level >= SWEEP.fromLevel
+      ? { mode: 'gather', dir: 1, sweepsLeft: Math.round(s.hens * EGGS_PER_HEN / 2 / SWEEP.eggs), count: 0, lead: 0, laid: 0, dropT: 0 }
+      : null;
+  }
+
+  // Where hen i stands in the marching line, given where the front of the line is
+  function lineX(i, lead, dir) {
+    const rank = dir > 0 ? hens.length - 1 - i : i;   // 0 = the front hen
+    return lead - dir * rank * SWEEP.spacing;
+  }
+
+  function startScramble(s) {
+    pattern.mode = 'scramble';
+    pattern.count = 0;
+    pattern.dir = -pattern.dir;   // next sweep goes the other way
+    hens.forEach((h, i) => {
+      h.t = 0.2 + Math.random() * 0.8;
+      h.dropTimer = 0.5 + i * (s.interval / hens.length);
+    });
+  }
+
+  // Sweep levels: gather the hens into a line, march it across dropping a row of eggs,
+  // then go back to scrambling. Returns true while a sweep is in charge of the hens.
+  function updateSweep(dt, s) {
+    if (!pattern || pattern.mode === 'scramble') return false;
+    const dir = pattern.dir;
+    if (pattern.mode === 'gather') {
+      const lead = dir > 0 ? 18 : W - 18;
+      let ready = true;
+      hens.forEach((h, i) => {
+        const dx = lineX(i, lead, dir) - h.x;
+        if (Math.abs(dx) > 1.5) { ready = false; h.dir = Math.sign(dx); }
+        h.x += Math.sign(dx) * Math.min(Math.abs(dx), SWEEP.gatherSpeed * dt);
+      });
+      if (ready) { pattern.mode = 'sweep'; pattern.lead = lead; pattern.laid = 0; pattern.dropT = 0.35; }
+      return true;
+    }
+    // Sweep: the line marches across; the front hen lays a steady row of eggs
+    pattern.lead += dir * SWEEP.speed * dt;
+    hens.forEach((h, i) => { h.x = lineX(i, pattern.lead, dir); h.dir = dir; });
+    const front = hens[dir > 0 ? hens.length - 1 : 0];
+    pattern.dropT -= dt;
+    if (pattern.dropT <= 0 && pattern.laid < SWEEP.eggs) {
+      // Eggs come out of the front hen, drawn from whichever hens still have eggs to lay
+      const donor = front.toDrop > 0 ? front : hens.find(h => h.toDrop > 0);
+      if (donor) {
+        eggs.push({ x: front.x, y: FENCE_Y + 4, egg: pickEgg(donor.breed) });
+        donor.toDrop--;
+        front.toss = 0.15;
+        cluck();
+        pattern.laid++;
+        pattern.dropT = SWEEP.gap;
+      } else pattern.laid = SWEEP.eggs;
+    }
+    const pastEdge = dir > 0 ? front.x > W - 18 : front.x < 18;
+    if (pattern.laid >= SWEEP.eggs || pastEdge) {
+      pattern.sweepsLeft--;
+      startScramble(s);
+    }
+    return true;
   }
 
   function startLevel(announce, isRetry = false) {
@@ -513,28 +588,41 @@
     if (state === 'playing') {
       const s = levelSettings(level);
 
+      const sweeping = updateSweep(dt, s);
       for (const h of hens) {
+        if (sweeping) break;
         // Scurry back and forth, changing direction at random
         h.t -= dt;
         if (h.t <= 0) {
           h.dir = Math.random() < 0.5 ? -1 : 1;
           h.t = 0.3 + Math.random() * 1.2;
         }
+        // Hens that ended a sweep off the edge walk back onto the fence
+        const offLeft = h.x < 16, offRight = h.x > W - 16;
+        if (offLeft || offRight) {
+          h.dir = offLeft ? 1 : -1;
+          h.t = Math.max(h.t, 0.3);
+        }
         h.x += h.dir * s.speed * dt;
-        if (h.x < 16) { h.x = 16; h.dir = 1; }
-        if (h.x > W - 16) { h.x = W - 16; h.dir = -1; }
+        if (!offLeft && h.x < 16) { h.x = 16; h.dir = 1; }
+        if (!offRight && h.x > W - 16) { h.x = W - 16; h.dir = -1; }
 
-        // Lay eggs
+        // Lay eggs (never from off the edge of the screen)
         if (h.toDrop > 0) {
           h.dropTimer -= dt;
-          if (h.dropTimer <= 0) {
+          if (h.dropTimer <= 0 && h.x >= 16 && h.x <= W - 16) {
             eggs.push({ x: h.x, y: FENCE_Y + 4, egg: pickEgg(h.breed) });
             h.toDrop--;
             h.dropTimer = s.interval * (0.8 + Math.random() * 0.4);
             h.toss = 0.15;
             cluck();
+            if (pattern) pattern.count++;
           }
         }
+      }
+      // After a stretch of scramble, line up for the next sweep
+      if (pattern && pattern.mode === 'scramble' && pattern.sweepsLeft > 0 && pattern.count >= SWEEP.chunk) {
+        pattern.mode = 'gather';
       }
 
       // Move eggs, check catches and misses
