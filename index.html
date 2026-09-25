@@ -331,6 +331,8 @@
   const WHITE = { base: '#FAF7F0', shade: '#D8D2C4', shine: '#FFFFFF', speck: '#EDE8DC', line: '#8C8474' };
   const CHOC  = { base: '#7A4426', shade: '#5E321A', shine: '#9E6440', speck: '#4E2814', line: '#2E170A' };   // dark chocolate Marans eggs
   const BLUE  = { base: '#A6D8DB', shade: '#7FB6BB', shine: '#D2F0F1', speck: '#93C7CB', line: '#46767B' };
+  const PINK   = { base: '#F7A8CF', shade: '#E07BB0', shine: '#FFD9EC', speck: '#EC93C0', line: '#8E3A68' };
+  const PURPLE = { base: '#B08AE6', shade: '#8C63CF', shine: '#DCC9F8', speck: '#9E78DC', line: '#4E2E86' };
 
   // One new chicken joins the fence each level
   const BREEDS = [
@@ -338,8 +340,11 @@
     { key: 'leghorn', name: 'a White Leghorn',     egg: WHITE },
     { key: 'marans',  name: 'a Cuckoo Marans',     egg: CHOC },
     { key: 'polish',  name: 'a Blue Polish',       egg: WHITE },
-    { key: 'ameraucana', name: 'a Black Ameraucana', egg: BLUE }
+    { key: 'ameraucana', name: 'a Black Ameraucana', egg: BLUE },
+    { key: 'cobalt',  name: 'a Cobalt Space Hen',  egg: [PINK, PURPLE] }   // lays pink or purple eggs
   ];
+  // A breed's egg color, or a random one if she lays more than one color
+  const pickEgg = b => Array.isArray(b.egg) ? b.egg[Math.floor(Math.random() * b.egg.length)] : b.egg;
   const EGGS_PER_HEN = 10;
 
   function levelSettings(l) {
@@ -523,7 +528,7 @@
         if (h.toDrop > 0) {
           h.dropTimer -= dt;
           if (h.dropTimer <= 0) {
-            eggs.push({ x: h.x, y: FENCE_Y + 4, egg: h.breed.egg });
+            eggs.push({ x: h.x, y: FENCE_Y + 4, egg: pickEgg(h.breed) });
             h.toDrop--;
             h.dropTimer = s.interval * (0.8 + Math.random() * 0.4);
             h.toss = 0.15;
@@ -672,6 +677,52 @@
     brect(x + 11, base - 15, 4, 3, '#F3E6CF');
   }
 
+  // ---------- Space helpers (level 6) ----------
+  // A filled pixel disc; color(dx, dy) picks each pixel's color (relative to the center)
+  function disc(cx, cy, r, color) {
+    for (let dy = -r; dy <= r; dy++) {
+      const half = Math.round(Math.sqrt(r * r - dy * dy));
+      for (let dx = -half; dx <= half; dx++) {
+        const c = color(dx, dy);
+        if (c) brect(cx + dx, cy + dy, 1, 1, c);
+      }
+    }
+  }
+  // Shade the lower-left of a planet so it looks lit from the upper right
+  const lit = (dx, dy, r) => dx - dy < -r * 0.9;
+
+  function neptune(cx, cy, r) {           // giant, banded, deep blue, with its Great Dark Spot
+    disc(cx, cy, r, (dx, dy) => {
+      if (lit(dx, dy, r)) return '#22398E';
+      const band = Math.floor((dy + r) / 5 + Math.sin(dx / 9) * 0.6) % 4;
+      return ['#3E66D8', '#4A74E0', '#3558C8', '#5A84EA'][band];
+    });
+    disc(cx - 14, cy - 10, 5, (dx, dy) => (dx * dx) / 1.8 + dy * dy <= 12 ? '#1C2F7A' : null);   // dark spot
+    for (const [x, y, w] of [[-20, -6, 10], [4, 18, 8], [-4, -18, 6]]) brect(cx + x, cy + y, w, 1, '#D6E2FF');   // bright wispy clouds
+  }
+
+  function pluto(cx, cy, r) {             // small and tan, with its pale heart (Tombaugh Regio)
+    disc(cx, cy, r, (dx, dy) => lit(dx, dy, r) ? '#7A5E48' : (dx + dy) % 5 === 0 ? '#B08F72' : '#C9A98A');
+    brect(cx + 1, cy - 1, 2, 2, '#F4E8D8'); brect(cx + 4, cy - 1, 2, 2, '#F4E8D8');
+    brect(cx + 1, cy + 1, 5, 1, '#F4E8D8'); brect(cx + 2, cy + 2, 3, 1, '#F4E8D8'); brect(cx + 3, cy + 3, 1, 1, '#F4E8D8');
+  }
+
+  function kepler452b(cx, cy, r) {        // Earth's "older cousin": oceans, land and clouds
+    disc(cx, cy, r + 1, (dx, dy) => dx * dx + dy * dy > r * r ? '#9FD2FF' : null);   // thin glowing atmosphere
+    disc(cx, cy, r, (dx, dy) => {
+      if (lit(dx, dy, r)) return (dx * 3 + dy * 5) % 7 === 0 ? '#3B6E3A' : '#1D4D7A';
+      const land = Math.sin(dx / 3.2) + Math.cos(dy / 2.6 + dx / 5) > 0.7;
+      const cloud = Math.abs(Math.sin(dy / 2.2 + dx / 7)) > 0.985 && (dx + dy) % 4 !== 0;
+      return cloud ? '#F2F7FF' : land ? ((dx + dy) % 3 ? '#5FA35A' : '#8BB55A') : '#2E7FC4';
+    });
+  }
+
+  function crater(x, y, w) {
+    brect(x, y, w, 2, '#4A4666');
+    brect(x + 1, y - 1, w - 2, 1, '#8A86A8');   // bright rim
+    brect(x + 1, y + 2, w - 2, 1, '#5E5A7E');
+  }
+
   const SCENES = [
     { // 1: sunny meadow
       hills: ['#9FD08A', '#86C471'],
@@ -738,16 +789,40 @@
           brect(x, y - 8, 1, 2, '#4E6A2A');
         }
       }
+    },
+    { // 6: outer space: giant Neptune, Pluto and Kepler-452b over a cratered moon
+      space: true,
+      sky: ['#05061A', '#080A24', '#0C0F2E', '#111538', '#161A42', '#1B1F4C', '#212556'],
+      hills: ['#3E3A5E', '#4A4670'],
+      meadow: ['#6E6A8E', '#666286', '#5E5A7E', '#565276', '#4E4A6E'],
+      decor() {
+        // Craters scattered over the moon's surface
+        for (let i = 0; i < 16; i++) crater((i * 73 + 13) % (W - 12), 122 + ((i * 41) % 76), 6 + (i % 3) * 3);
+      },
+      skyDecor() {
+        // Stars
+        for (let i = 0; i < 90; i++) {
+          const sx = (i * 97 + 31) % W, sy = (i * 53 + 7) % 104;
+          brect(sx, sy, 1, 1, i % 5 === 0 ? '#FFF6C8' : i % 3 === 0 ? '#B9C8FF' : '#FFFFFF');
+        }
+        neptune(214, 30, 40);
+        pluto(26, 20, 7);
+        kepler452b(104, 84, 12);
+      }
     }
   ];
+  let scene = SCENES[0];   // the scene painted for the current level
 
   function paintBackground(sceneIndex = 0) {
     const sc = SCENES[sceneIndex % SCENES.length];
+    scene = sc;
     bctx.clearRect(0, 0, W, H);
     // Sky bands
     const band = 14;
-    SKY.forEach((c, i) => brect(0, i * band, W, band, c));
-    brect(0, SKY.length * band, W, 40, SKY[SKY.length - 1]);
+    const sky = sc.sky || SKY;
+    sky.forEach((c, i) => brect(0, i * band, W, band, c));
+    brect(0, sky.length * band, W, 40, sky[sky.length - 1]);
+    if (sc.skyDecor) sc.skyDecor();
     // Far hills
     for (let x = 0; x < W; x++) {
       const h1 = 14 + Math.round(Math.sin(x / 26) * 6 + Math.sin(x / 11) * 2);
@@ -758,6 +833,7 @@
     // Meadow, lighter far away and richer up close
     sc.meadow.forEach((c, i) => brect(0, 112 + i * 19, W, 19, c));
     sc.decor();
+    if (sc.space) return;   // no bushes on the moon
     // Bushes along the bottom
     bush(4, GROUND, 22);
     bush(58, GROUND, 16);
@@ -778,6 +854,17 @@
 
   function drawSky() {
     ctx.drawImage(bg, 0, 0);
+    if (scene.space) {
+      // A few stars twinkle
+      for (let i = 0; i < 12; i++) {
+        const sx = (i * 131 + 57) % W, sy = (i * 71 + 19) % 100;
+        if (Math.sin(clock * (2 + (i % 3)) + i) > 0.4) {
+          rect(sx, sy, 1, 1, '#FFFFFF');
+          rect(sx - 1, sy, 3, 1, '#9FB6FF'); rect(sx, sy - 1, 1, 3, '#9FB6FF'); rect(sx, sy, 1, 1, '#FFFFFF');
+        }
+      }
+      return;
+    }
     // Sun with gently pulsing rays
     const sx = 222, sy = 12;
     const ray = Math.floor(clock * 2) % 2 ? 3 : 2;
@@ -797,6 +884,19 @@
   }
 
   function drawFence() {
+    if (scene.space) {
+      for (let x = 4; x < W; x += 20) {
+        rect(x, FENCE_Y + 2, 6, 22, '#7C8699');
+        rect(x + 1, FENCE_Y, 4, 2, '#7C8699');
+        rect(x, FENCE_Y + 2, 1, 22, '#C9D2E0');
+        rect(x + 2, FENCE_Y + 12, 2, 2, Math.floor(clock * 2 + x) % 2 ? '#5CF2FF' : '#1E6F80');   // blinking lights
+      }
+      rect(0, FENCE_Y + 4, W, 4, '#B8C2D2');
+      rect(0, FENCE_Y + 4, W, 1, '#E6ECF5');
+      rect(0, FENCE_Y + 8, W, 1, '#4E566A');
+      rect(0, FENCE_Y + 16, W, 3, '#8E98AC');
+      return;
+    }
     for (let x = 4; x < W; x += 20) {
       rect(x, FENCE_Y + 2, 6, 22, '#9A6A3A');
       rect(x + 1, FENCE_Y, 4, 2, '#9A6A3A');
@@ -813,7 +913,8 @@
     leghorn: { body: '#FFFFFF', dark: '#DCDCE6', light: '#FFFFFF', neck: '#FFFFFF', head: '#FFFFFF', tail: '#FFFFFF', tailTip: '#EDEDF3', beak: '#F2B01E', legs: '#F2B01E' },
     marans:  { body: '#4A4A53', dark: '#36363E', light: '#A7A7B2', neck: '#4A4A53', head: '#4A4A53', tail: '#3E3E46', tailTip: '#A7A7B2', beak: '#D9C9A8', legs: '#E6D6C4' },
     polish:  { body: '#5F7699', dark: '#46597A', light: '#7F95B8', neck: '#5F7699', head: '#5F7699', tail: '#46597A', tailTip: '#7F95B8', beak: '#9AA3B2', legs: '#6B7280' },
-    ameraucana: { body: '#202027', dark: '#0F0F14', light: '#3C4766', neck: '#202027', head: '#202027', tail: '#15151B', tailTip: '#35406A', beak: '#4A4A52', legs: '#3E4450' }
+    ameraucana: { body: '#202027', dark: '#0F0F14', light: '#3C4766', neck: '#202027', head: '#202027', tail: '#15151B', tailTip: '#35406A', beak: '#4A4A52', legs: '#3E4450' },
+    cobalt:  { body: '#1F4FC9', dark: '#153A99', light: '#5C8BF0', neck: '#2A5BD6', head: '#1F4FC9', tail: '#153A99', tailTip: '#9DBBFF', beak: '#F2B01E', legs: '#F2B01E' }
   };
 
   function drawHen(h) {
@@ -986,6 +1087,13 @@
   }
 
   function drawGround() {
+    if (scene.space) {
+      rect(0, GROUND, W, H - GROUND, '#3E3A5C');
+      rect(0, GROUND, W, 2, '#7E7AA0');
+      for (let x = 5; x < W; x += 13) rect(x, GROUND + 5 + (x % 7), 3, 1, '#2C2946');
+      for (let x = 11; x < W; x += 29) rect(x, GROUND - 2, 3, 2, '#5E5A7E');   // pebbles
+      return;
+    }
     rect(0, GROUND, W, H - GROUND, '#3E8E3E');
     rect(0, GROUND, W, 2, '#5DB05D');
     for (let x = 3; x < W; x += 11) rect(x, GROUND - 2, 1, 2, '#5DB05D');
