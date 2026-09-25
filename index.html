@@ -364,14 +364,14 @@
   const pickEgg = b => Array.isArray(b.egg) ? b.egg[Math.floor(Math.random() * b.egg.length)] : b.egg;
   const EGGS_PER_HEN = 10;
 
-  // From level 6 (a crowded fence), eggs come down in a mix of patterns:
+  // From level 4 (a busy fence), eggs come down in batches, a mix of patterns:
   //  - row:      the hens spread out along the fence and lay one after another, left to right
   //              (or right to left), a Kaboom-style line of eggs in all colors to slide along
   //  - bunch:    a few hens huddle in one spot and lay a quick stack of eggs there
   //  - scramble: hens lay on their own, as on earlier levels
   // And no egg is ever laid unless a person could move the basket from the last egg in time.
   const MIX = {
-    fromLevel: 6,
+    fromLevel: 4,
     order: ['row', 'scramble', 'bunch', 'scramble'],   // repeats
     scrambleEggs: 6,   // eggs per scramble stretch
     rowGap: 0.45,      // seconds between eggs in a row
@@ -379,8 +379,8 @@
     bunchEggs: 4,
     bunchGap: 0.38,    // seconds between eggs in a bunch
     moveSpeed: 130,    // how fast hens hurry into place (pixels per second)
-    breather: 0.6,     // pause between patterns
-    maxReach: 170      // fastest we expect a person to move the basket (pixels per second)
+    breather: 0.9,     // pause between batches, so kids can get ready for the next one
+    maxReach: 140      // fastest we expect a kid to move the basket (pixels per second)
   };
 
   function levelSettings(l) {
