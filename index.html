@@ -123,11 +123,20 @@
     border-radius: 6px;
   }
   .overlay[hidden] { display: none; }
+  .overlay { container-type: inline-size; }   /* lets the heading size itself to the game box */
+  /* Title screen text: a short intro, with "… more" for the rest. The text area shrinks and scrolls
+     on small screens, so the title and the Play button always stay inside the box. */
+  .intro { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 0.8em; }
+  .intro .more { display: flex; flex-direction: column; align-items: center; gap: 0.8em; }
+  .intro .more[hidden] { display: none; }
+  .more-btn { font: inherit; background: none; border: 0; padding: 0; color: var(--gold); text-decoration: underline; cursor: pointer; }
+  .more-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   h1 {
     margin: 0;
     font-weight: 700;
     font-size: clamp(26px, 8vmin, 72px);
     line-height: 1;
+    font-size: min(clamp(26px, 8vmin, 72px), 7.4cqw);   /* never wider than the game box */
     color: var(--gold);
     text-shadow: 0.08em 0.08em 0 var(--plum);
   }
@@ -193,9 +202,14 @@
 
     <div class="overlay" id="titleScreen">
       <h1>Egg Scramble</h1>
-      <p>Hazel the hen is laying eggs up on the fence. Catch them in your egg baskets for points. Miss one and it cracks, and you lose a basket! Every level, a new chicken joins her.</p>
-      <p>Clear a level without missing a single egg to power up ⭐ Your basket turns gold and grows bigger, and the next miss costs your power-up instead of a basket.</p>
-      <p>Drag your finger, move the mouse, use the arrow keys, or use a game controller (press A to start).</p>
+      <div class="intro">
+        <p>Catch Hazel's eggs in your baskets. Miss one and you lose a basket! <button class="more-btn" id="moreBtn" type="button" aria-expanded="false" aria-controls="moreText">… more</button></p>
+        <div class="more" id="moreText" hidden>
+          <p>Hazel the hen is laying eggs up on the fence. Every level, a new chicken joins her.</p>
+          <p>Clear a level without missing a single egg to power up ⭐ Your basket turns gold and grows bigger, and the next miss costs your power-up instead of a basket.</p>
+          <p>Drag your finger, move the mouse, use the arrow keys, or use a game controller (press A to start).</p>
+        </div>
+      </div>
       <button class="play" id="playBtn" type="button">Play</button>
     </div>
 
@@ -1382,6 +1396,13 @@
   });
 
   $('playBtn').addEventListener('click', newGame);
+  $('moreBtn').addEventListener('click', () => {
+    const more = $('moreText'), open = more.hidden;
+    more.hidden = !open;
+    $('moreBtn').textContent = open ? 'less' : '… more';
+    $('moreBtn').setAttribute('aria-expanded', String(open));
+    $('moreBtn').blur();
+  });
   $('againBtn').addEventListener('click', newGame);
   $('resumeBtn').addEventListener('click', togglePause);
 })();
